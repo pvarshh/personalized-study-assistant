@@ -15,7 +15,8 @@ venv.bak/
 api-key
 *.key
 
-# ChromaDB
+# Data and Database
+data/
 chroma_db/
 *.db
 *.sqlite3
@@ -23,6 +24,13 @@ chroma_db/
 # Logs
 *.log
 logs/
+
+# Debug and test files
+debug_*.py
+test_*.py
+check_*.py
+*_test.py
+clean_*.py
 
 # Streamlit
 .streamlit/secrets.toml

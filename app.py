@@ -1,7 +1,7 @@
 """
 Personalized Study Assistant
 A comprehensive AI-powered tool for students to upload study materials and get instant answers.
-Version: 1.0.1 - Fixed vector store methods and document retrieval
+Version: 1.1.0 - Cleaned up codebase and implemented persistent sessions
 """
 
 import streamlit as st
@@ -40,9 +40,36 @@ class StudyAssistant:
         self.vector_store = VectorStore()
         self.ai_assistant = None
         self.session_initialized = False
+        
+        # Auto-initialize with API key from environment/secrets
+        self._auto_initialize()
+    
+    def _auto_initialize(self):
+        """Automatically initialize with API key from environment or Streamlit secrets"""
+        try:
+            # Try to get API key from Streamlit secrets first
+            api_key = None
+            if hasattr(st, 'secrets') and 'GOOGLE_API_KEY' in st.secrets:
+                api_key = st.secrets['GOOGLE_API_KEY']
+                logger.info("Using API key from Streamlit secrets")
+            elif 'GOOGLE_API_KEY' in os.environ:
+                api_key = os.environ['GOOGLE_API_KEY']
+                logger.info("Using API key from environment variables")
+            
+            if api_key and validate_api_key(api_key):
+                self.ai_assistant = AIAssistant(api_key)
+                self.session_initialized = True
+                logger.info("Session auto-initialized successfully")
+                return True
+            else:
+                logger.warning("No valid API key found for auto-initialization")
+                return False
+        except Exception as e:
+            logger.error(f"Error during auto-initialization: {e}")
+            return False
     
     def initialize_session(self, api_key: str):
-        """Initialize the AI assistant with API key"""
+        """Manual initialization with API key (fallback method)"""
         try:
             if validate_api_key(api_key):
                 self.ai_assistant = AIAssistant(api_key)
@@ -74,15 +101,10 @@ class StudyAssistant:
             if all_documents:
                 # Add documents to vector store
                 success = self.vector_store.add_documents(all_documents)
-                logger.info(f"Successfully processed {len(all_documents)} document chunks")
-                
-                # Debug: Check vector store status
-                collection_info = self.vector_store.get_collection_info()
-                logger.info(f"Vector store now contains {collection_info.get('count', 0)} documents")
-                
+                if success:
+                    logger.info(f"Successfully processed {len(all_documents)} document chunks")
                 return success
             
-            logger.warning("No documents were extracted from uploaded files")
             return False
             
         except Exception as e:
@@ -105,20 +127,9 @@ class StudyAssistant:
             # Retrieve relevant documents
             relevant_docs = self.vector_store.similarity_search(question, k=5)
             
-            # Debug: Log what documents were retrieved
-            logger.info(f"Question: {question}")
-            logger.info(f"Total documents in store: {total_docs}")
-            logger.info(f"Retrieved {len(relevant_docs)} documents")
-            for i, doc in enumerate(relevant_docs):
-                score = doc.metadata.get('similarity_score', 'N/A')
-                source = doc.metadata.get('source', 'Unknown')
-                logger.info(f"Doc {i+1}: Score={score}, Source={source}, Content preview: {doc.page_content[:100]}...")
-            
             # If no relevant docs found but we have docs, try broader search
             if not relevant_docs and total_docs > 0:
-                logger.info("No relevant docs found, trying broader search")
                 relevant_docs = self.vector_store.get_all_documents()[:5]
-                logger.info(f"Using {len(relevant_docs)} documents from broader search")
             
             # Generate answer using AI assistant
             answer = self.ai_assistant.generate_answer(
@@ -177,23 +188,36 @@ def main():
     st.title("🎓 Personalized Study Assistant")
     st.markdown("Upload your study materials and get instant, AI-powered answers to your questions!")
     
+    # Check session status and show appropriate UI
+    if st.session_state.study_assistant.session_initialized:
+        st.success("✅ Session initialized and ready!")
+    else:
+        st.warning("⚠️ Session not initialized. Some features may not work.")
+    
     # Sidebar for configuration
     with st.sidebar:
         st.header("Configuration")
         
-        # API Key input
-        api_key = st.text_input(
-            "Google API Key",
-            type="password",
-            help="Enter your Google API key to enable AI features (get one from https://aistudio.google.com/app/apikey)"
-        )
-        
-        if api_key and not st.session_state.study_assistant.session_initialized:
-            if st.button("Initialize Session"):
-                if st.session_state.study_assistant.initialize_session(api_key):
-                    st.success("✅ Session initialized successfully!")
-                else:
-                    st.error("❌ Invalid API key. Please check and try again.")
+        # Show session status
+        if st.session_state.study_assistant.session_initialized:
+            st.success("✅ AI Assistant Ready")
+        else:
+            st.error("❌ AI Assistant Not Ready")
+            
+            # Manual API Key input as fallback
+            st.markdown("**Manual Setup (if auto-initialization failed):**")
+            api_key = st.text_input(
+                "Google API Key",
+                type="password",
+                help="Enter your Google API key to enable AI features"
+            )
+            
+            if api_key and not st.session_state.study_assistant.session_initialized:
+                if st.button("Initialize Session"):
+                    if st.session_state.study_assistant.initialize_session(api_key):
+                        st.success("✅ Session initialized successfully!")
+                    else:
+                        st.error("❌ Invalid API key. Please check and try again.")
         
         st.markdown("---")
         
