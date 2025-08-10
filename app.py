@@ -5,16 +5,27 @@ A comprehensive AI-powered tool for students to upload study materials and get i
 
 import streamlit as st
 import os
+import sys
 import tempfile
 from typing import List, Dict, Any
 import logging
 from datetime import datetime
 
+# Add src directory to Python path
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
+
 # Core imports
-from src.document_processor import DocumentProcessor
-from src.vector_store import VectorStore
-from src.ai_assistant import AIAssistant
-from src.utils import setup_logging, validate_api_key
+try:
+    from document_processor import DocumentProcessor
+    from vector_store import VectorStore
+    from ai_assistant import AIAssistant
+    from utils import setup_logging, validate_api_key
+except ImportError:
+    # Fallback for local development
+    from src.document_processor import DocumentProcessor
+    from src.vector_store import VectorStore
+    from src.ai_assistant import AIAssistant
+    from src.utils import setup_logging, validate_api_key
 
 # Set up logging
 setup_logging()
