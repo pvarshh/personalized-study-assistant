@@ -1,6 +1,7 @@
 """
 Personalized Study Assistant
 A comprehensive AI-powered tool for students to upload study materials and get instant answers.
+Version: 1.0.1 - Fixed vector store methods and document retrieval
 """
 
 import streamlit as st
