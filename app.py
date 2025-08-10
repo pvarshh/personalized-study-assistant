@@ -72,10 +72,16 @@ class StudyAssistant:
             
             if all_documents:
                 # Add documents to vector store
-                self.vector_store.add_documents(all_documents)
+                success = self.vector_store.add_documents(all_documents)
                 logger.info(f"Successfully processed {len(all_documents)} document chunks")
-                return True
+                
+                # Debug: Check vector store status
+                collection_info = self.vector_store.get_collection_info()
+                logger.info(f"Vector store now contains {collection_info.get('count', 0)} documents")
+                
+                return success
             
+            logger.warning("No documents were extracted from uploaded files")
             return False
             
         except Exception as e:
@@ -88,16 +94,30 @@ class StudyAssistant:
             if not self.session_initialized:
                 return "Please initialize the session with a valid API key first."
             
+            # Check if we have any documents at all
+            collection_info = self.vector_store.get_collection_info()
+            total_docs = collection_info.get('count', 0)
+            
+            if total_docs == 0:
+                return "No documents have been uploaded yet. Please upload some study materials first before asking questions."
+            
             # Retrieve relevant documents
             relevant_docs = self.vector_store.similarity_search(question, k=5)
             
             # Debug: Log what documents were retrieved
             logger.info(f"Question: {question}")
+            logger.info(f"Total documents in store: {total_docs}")
             logger.info(f"Retrieved {len(relevant_docs)} documents")
             for i, doc in enumerate(relevant_docs):
                 score = doc.metadata.get('similarity_score', 'N/A')
                 source = doc.metadata.get('source', 'Unknown')
                 logger.info(f"Doc {i+1}: Score={score}, Source={source}, Content preview: {doc.page_content[:100]}...")
+            
+            # If no relevant docs found but we have docs, try broader search
+            if not relevant_docs and total_docs > 0:
+                logger.info("No relevant docs found, trying broader search")
+                relevant_docs = self.vector_store.get_all_documents()[:5]
+                logger.info(f"Using {len(relevant_docs)} documents from broader search")
             
             # Generate answer using AI assistant
             answer = self.ai_assistant.generate_answer(
@@ -304,12 +324,21 @@ def main():
         st.markdown("---")
         
         st.header("📊 Session Stats")
-        stats_col1, stats_col2 = st.columns(2)
+        stats_col1, stats_col2, stats_col3 = st.columns(3)
         
         with stats_col1:
-            st.metric("Documents", len(uploaded_files) if uploaded_files else 0)
+            st.metric("Uploaded Files", len(uploaded_files) if uploaded_files else 0)
         
         with stats_col2:
+            # Get actual document count from vector store
+            if hasattr(st.session_state, 'study_assistant') and st.session_state.study_assistant.vector_store:
+                collection_info = st.session_state.study_assistant.vector_store.get_collection_info()
+                doc_count = collection_info.get('count', 0)
+            else:
+                doc_count = 0
+            st.metric("Processed Chunks", doc_count)
+        
+        with stats_col3:
             st.metric("Questions", len([x for x in st.session_state.chat_history if x["type"] == "question"]))
     
     # Footer

@@ -89,6 +89,14 @@ class VectorStore:
             logger.error(f"Error searching by metadata: {e}")
             return []
     
+    def get_all_documents(self) -> List[Document]:
+        """Get all documents in the collection"""
+        try:
+            return self.store.documents.copy() if hasattr(self.store, 'documents') else []
+        except Exception as e:
+            logger.error(f"Error getting all documents: {e}")
+            return []
+    
     def cleanup(self):
         """Clean up resources (no-op for simple store)"""
         pass
