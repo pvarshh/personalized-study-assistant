@@ -6,15 +6,28 @@ Handles embeddings generation and vector storage using ChromaDB
 import logging
 from typing import List, Dict, Any, Optional
 import os
-import chromadb
-from chromadb.config import Settings
+import tempfile
+import shutil
+
+logger = logging.getLogger(__name__)
+
+try:
+    import chromadb
+    from chromadb.config import Settings
+    CHROMADB_AVAILABLE = True
+except ImportError as e:
+    logger.warning(f"ChromaDB import failed: {e}")
+    CHROMADB_AVAILABLE = False
 
 # LangChain imports
 from langchain.schema import Document
-from langchain_community.vectorstores import Chroma
-from langchain_community.embeddings import HuggingFaceEmbeddings
-
-logger = logging.getLogger(__name__)
+try:
+    from langchain_community.vectorstores import Chroma
+    from langchain_community.embeddings import HuggingFaceEmbeddings
+    LANGCHAIN_AVAILABLE = True
+except ImportError as e:
+    logger.warning(f"LangChain imports failed: {e}")
+    LANGCHAIN_AVAILABLE = False
 
 class VectorStore:
     """Manages vector storage and similarity search using ChromaDB"""
@@ -22,12 +35,29 @@ class VectorStore:
     def __init__(self, 
                  collection_name: str = "study_materials",
                  embedding_model: str = "all-MiniLM-L6-v2",
-                 persist_directory: str = "./chroma_db"):
+                 persist_directory: str = None):
         
         self.collection_name = collection_name
-        self.persist_directory = persist_directory
+        
+        # Use temp directory for Streamlit Cloud
+        if persist_directory is None:
+            if 'STREAMLIT_CLOUD' in os.environ or '/mount/src/' in os.getcwd():
+                # Running on Streamlit Cloud - use temp directory
+                self.persist_directory = tempfile.mkdtemp(prefix="chroma_")
+                logger.info(f"Using temporary directory for ChromaDB: {self.persist_directory}")
+            else:
+                # Local development
+                self.persist_directory = "./chroma_db"
+        else:
+            self.persist_directory = persist_directory
+        
+        # Create directory if it doesn't exist
+        os.makedirs(self.persist_directory, exist_ok=True)
         
         # Initialize embeddings
+        if not LANGCHAIN_AVAILABLE:
+            raise RuntimeError("LangChain dependencies not available")
+            
         try:
             self.embeddings = HuggingFaceEmbeddings(
                 model_name=embedding_model,
@@ -39,14 +69,21 @@ class VectorStore:
             logger.error(f"Error initializing embeddings: {e}")
             raise
         
-        # Initialize ChromaDB client
+        # Initialize ChromaDB client with better error handling
+        if not CHROMADB_AVAILABLE:
+            raise RuntimeError("ChromaDB not available")
+            
         try:
+            # Configure ChromaDB for Streamlit Cloud
+            settings = Settings(
+                anonymized_telemetry=False,
+                allow_reset=True,
+                is_persistent=True
+            )
+            
             self.client = chromadb.PersistentClient(
-                path=persist_directory,
-                settings=Settings(
-                    anonymized_telemetry=False,
-                    allow_reset=True
-                )
+                path=self.persist_directory,
+                settings=settings
             )
             
             # Initialize the vector store
@@ -57,7 +94,19 @@ class VectorStore:
             
         except Exception as e:
             logger.error(f"Error initializing ChromaDB: {e}")
-            raise
+            # Try in-memory database as fallback
+            try:
+                logger.info("Attempting to use in-memory ChromaDB as fallback")
+                self.client = chromadb.Client(Settings(
+                    anonymized_telemetry=False,
+                    allow_reset=True
+                ))
+                self.vectorstore = None
+                self.document_count = 0
+                logger.info("In-memory ChromaDB client initialized successfully")
+            except Exception as e2:
+                logger.error(f"Fallback ChromaDB initialization also failed: {e2}")
+                raise RuntimeError(f"Could not initialize ChromaDB: {e}")
     
     def add_documents(self, documents: List[Document]) -> bool:
         """Add documents to the vector store"""
@@ -260,3 +309,18 @@ class VectorStore:
         except Exception as e:
             logger.error(f"Error searching by metadata: {e}")
             return []
+    
+    def cleanup(self):
+        """Clean up temporary directories if used"""
+        try:
+            if (self.persist_directory and 
+                self.persist_directory.startswith('/tmp') and 
+                os.path.exists(self.persist_directory)):
+                shutil.rmtree(self.persist_directory)
+                logger.info(f"Cleaned up temporary directory: {self.persist_directory}")
+        except Exception as e:
+            logger.warning(f"Error cleaning up directory: {e}")
+    
+    def __del__(self):
+        """Cleanup when object is destroyed"""
+        self.cleanup()
