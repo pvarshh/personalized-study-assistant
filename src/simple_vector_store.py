@@ -90,12 +90,23 @@ class SimpleVectorStore:
             # Return top documents
             results = []
             for idx in top_indices:
-                if idx < len(self.documents) and similarities[idx] > 0.1:  # Minimum similarity threshold
+                if idx < len(self.documents) and similarities[idx] > 0.05:  # Lower threshold for better recall
                     doc = self.documents[idx]
                     # Add similarity score to metadata
                     doc.metadata = doc.metadata or {}
                     doc.metadata['similarity_score'] = float(similarities[idx])
                     results.append(doc)
+            
+            # If no results with threshold, return top results anyway (but mark them)
+            if not results and len(top_indices) > 0:
+                logger.info("No results above threshold, returning top matches anyway")
+                for idx in top_indices[:k]:
+                    if idx < len(self.documents):
+                        doc = self.documents[idx]
+                        doc.metadata = doc.metadata or {}
+                        doc.metadata['similarity_score'] = float(similarities[idx])
+                        doc.metadata['low_confidence'] = True
+                        results.append(doc)
             
             logger.info(f"Found {len(results)} similar documents for query")
             return results
