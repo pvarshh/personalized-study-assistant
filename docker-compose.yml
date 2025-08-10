@@ -1,0 +1,26 @@
+version: '3.8'
+
+services:
+  study-assistant:
+    build: .
+    ports:
+      - "8501:8501"
+    environment:
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - GEMINI_MODEL=gemini-2.5-pro
+      - TEMPERATURE=0.1
+      - MAX_TOKENS=8192
+      - CHUNK_SIZE=1000
+      - CHUNK_OVERLAP=100
+      - VECTOR_STORE_PATH=/app/chroma_db
+      - LOG_LEVEL=INFO
+    volumes:
+      - ./data:/app/data
+      - ./chroma_db:/app/chroma_db
+      - ./logs:/app/logs
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8501/_stcore/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
