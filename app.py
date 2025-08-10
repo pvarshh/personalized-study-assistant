@@ -91,6 +91,14 @@ class StudyAssistant:
             # Retrieve relevant documents
             relevant_docs = self.vector_store.similarity_search(question, k=5)
             
+            # Debug: Log what documents were retrieved
+            logger.info(f"Question: {question}")
+            logger.info(f"Retrieved {len(relevant_docs)} documents")
+            for i, doc in enumerate(relevant_docs):
+                score = doc.metadata.get('similarity_score', 'N/A')
+                source = doc.metadata.get('source', 'Unknown')
+                logger.info(f"Doc {i+1}: Score={score}, Source={source}, Content preview: {doc.page_content[:100]}...")
+            
             # Generate answer using AI assistant
             answer = self.ai_assistant.generate_answer(
                 question=question,
